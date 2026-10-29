@@ -24,6 +24,8 @@ jobs:
         working-directory: ios
         run: |
           xcodegen generate
+          sed -i '' 's/objectVersion = 77;/objectVersion = 56;/g' SergioGazaMotivacion.xcodeproj/project.pbxproj
+          sed -i '' 's/objectVersion = 70;/objectVersion = 56;/g' SergioGazaMotivacion.xcodeproj/project.pbxproj
 
       - name: Compilar aplicación iOS (Release sin firma)
         working-directory: ios
