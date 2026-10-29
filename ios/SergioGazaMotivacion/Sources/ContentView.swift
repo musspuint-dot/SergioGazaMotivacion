@@ -127,7 +127,7 @@ struct ContentView: View {
                 }
             }
             .background(Color(red: 0.05, green: 0.05, blue: 0.07).ignoresSafeArea())
-            .navigationTitle("🔥 \(store.activeCreatorHandle)")
+            .navigationTitle("SACA TU MEJOR VERSION")
             .navigationBarTitleDisplayMode(.inline)
             .searchable(text: $searchText, prompt: "Buscar frase de \(store.activeCreatorHandle)...")
         }
@@ -135,13 +135,26 @@ struct ContentView: View {
 
     private var headerHeroCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("MODO AUDIO COMPLETO • \(store.activeCreatorHandle.uppercased())")
+            HStack(spacing: 12) {
+                Image("AppLogo")
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: 54, height: 54)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(Color.orange.opacity(0.6), lineWidth: 1.5)
+                    )
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("SACA TU MEJOR VERSION")
                         .font(.caption.weight(.heavy))
                         .foregroundColor(.orange)
+                    Text("Creador: \(store.activeCreatorHandle)")
+                        .font(.subheadline.weight(.bold))
+                        .foregroundColor(.white)
                     Text("\(store.phrases.count) Reels enteros • \(notifications.pendingCount) avisos activos")
-                        .font(.caption)
+                        .font(.caption2)
                         .foregroundColor(.gray)
                 }
                 Spacer()

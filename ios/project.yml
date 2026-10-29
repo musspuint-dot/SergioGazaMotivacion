@@ -8,10 +8,11 @@ options:
 
 settings:
   base:
-    MARKETING_VERSION: "2.0.0"
-    CURRENT_PROJECT_VERSION: "2"
+    MARKETING_VERSION: "3.0.0"
+    CURRENT_PROJECT_VERSION: "3"
     SWIFT_VERSION: "5.9"
     TARGETED_DEVICE_FAMILY: "1,2"
+    ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
     CODE_SIGN_IDENTITY: ""
     CODE_SIGNING_REQUIRED: "NO"
     CODE_SIGNING_ALLOWED: "NO"
@@ -22,6 +23,7 @@ targets:
     platform: iOS
     sources:
       - path: SergioGazaMotivacion/Sources
+      - path: SergioGazaMotivacion/Resources/Assets.xcassets
       - path: SergioGazaMotivacion/Resources/phrases.json
         buildPhase: resources
       - path: SergioGazaMotivacion/Resources/Sounds
@@ -30,16 +32,18 @@ targets:
     info:
       path: SergioGazaMotivacion/Info.plist
       properties:
-        CFBundleDisplayName: "Sergio Gaza"
-        CFBundleShortVersionString: "2.0.0"
-        CFBundleVersion: "2"
+        CFBundleName: "SACA TU MEJOR VERSION"
+        CFBundleDisplayName: "SACA TU MEJOR VERSION"
+        CFBundleIconName: "AppIcon"
+        CFBundleShortVersionString: "3.0.0"
+        CFBundleVersion: "3"
         UILaunchScreen:
           UIColorName: ""
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
         UIBackgroundModes:
           - audio
-        NSSpeechRecognitionUsageDescription: "La aplicación utiliza el reconocimiento de voz para escuchar los Reels del usuario de Instagram que elijas y transcribir sus frases motivadoras automáticamente."
+        NSSpeechRecognitionUsageDescription: "SACA TU MEJOR VERSION utiliza el reconocimiento de voz para escuchar los Reels del usuario de Instagram que elijas y transcribir sus frases motivadoras automáticamente."
         NSAppTransportSecurity:
           NSAllowsArbitraryLoads: true
         UIFileSharingEnabled: true

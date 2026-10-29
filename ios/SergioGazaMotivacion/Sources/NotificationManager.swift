@@ -95,7 +95,7 @@ final class NotificationManager: NSObject, ObservableObject, UNUserNotificationC
             for (idx, partFile) in parts.enumerated() {
                 let content = UNMutableNotificationContent()
                 let partSuffix = totalParts > 1 ? " (Parte \(idx + 1)/\(totalParts))" : ""
-                content.title = "🔥 \(phrase.author)\(partSuffix)"
+                content.title = "🔥 SACA TU MEJOR VERSION • \(phrase.author)\(partSuffix)"
                 content.subtitle = "\(phrase.category.uppercased()) • \(String(format: "%.0fs", phrase.durationSeconds)) COMPLETO"
                 content.body = "\"\(phrase.text)\""
                 content.sound = UNNotificationSound(named: UNNotificationSoundName(rawValue: partFile))
@@ -237,7 +237,7 @@ final class NotificationManager: NSObject, ObservableObject, UNUserNotificationC
                             let partDate = candidateDate.addingTimeInterval(Double(pIdx) * 28.0)
                             let content = UNMutableNotificationContent()
                             let partBadge = parts.count > 1 ? " [\(pIdx + 1)/\(parts.count)]" : ""
-                            content.title = "🔥 \(phrase.author)\(partBadge)"
+                            content.title = "🔥 SACA TU MEJOR VERSION • \(phrase.author)\(partBadge)"
                             content.subtitle = "\(phrase.category.uppercased()) • \(String(format: "%.0fs", phrase.durationSeconds))"
                             content.body = "\"\(phrase.text)\""
                             content.sound = UNNotificationSound(named: UNNotificationSoundName(rawValue: partFile))
