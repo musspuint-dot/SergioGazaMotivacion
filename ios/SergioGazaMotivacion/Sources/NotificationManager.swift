@@ -44,41 +44,81 @@ final class NotificationManager: NSObject, ObservableObject, UNUserNotificationC
         }
     }
 
-    /// Permite que la notificación suene con el audio de @mrsergiogaza incluso si la app está abierta en primer plano.
+    /// Cuando llega la notificación o alarma (en primer plano o con el motor de alarma en segundo plano activo),
+    /// dispara el reproductor de AUDIO COMPLETO SIN CORTES (`fullAudioFile`) de principio a fin.
     func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         willPresent notification: UNNotification,
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
+        let info = notification.request.content.userInfo
+        let partIndex = info["partIndex"] as? Int ?? 0
+
+        if let fullAudioFile = info["fullAudioFile"] as? String {
+            if partIndex == 0 {
+                // Reproducir el Reel COMPLETO de principio a fin sin corte de 30s
+                AudioPlayerManager.shared.play(fileName: fullAudioFile, forceStartFromBeginning: true)
+                completionHandler([.banner, .list])
+                return
+            } else if AudioPlayerManager.shared.isPlaying {
+                // El audio completo ya está sonando sin cortes; silenciar partes encadenadas redundantes
+                completionHandler([])
+                return
+            }
+        }
+
         completionHandler([.banner, .list, .sound])
     }
 
-    /// Envía una notificación de prueba en 5 segundos con la voz de @mrsergiogaza para probar con la pantalla bloqueada.
+    /// Si el usuario toca la notificación desde la pantalla de bloqueo, asegura que suene el Reel completo.
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        didReceive response: UNNotificationResponse,
+        withCompletionHandler completionHandler: @escaping () -> Void
+    ) {
+        let info = response.notification.request.content.userInfo
+        if let fullAudioFile = info["fullAudioFile"] as? String, !AudioPlayerManager.shared.isPlaying {
+            AudioPlayerManager.shared.play(fileName: fullAudioFile, forceStartFromBeginning: true)
+        }
+        completionHandler()
+    }
+
+    /// Envía una notificación/alarma de prueba en 5 segundos que reproduce el AUDIO COMPLETO del Reel.
     func sendTestNotification(with phrase: MotivationalPhrase) {
         let scheduleBlock = {
-            let content = UNMutableNotificationContent()
-            content.title = "🔥 Sergio Gaza (@mrsergiogaza)"
-            content.subtitle = phrase.category.uppercased()
-            content.body = "\"\(phrase.text)\""
-            content.sound = UNNotificationSound(named: UNNotificationSoundName(rawValue: phrase.audioFile))
-            content.userInfo = ["phraseId": phrase.id, "audioFile": phrase.audioFile]
+            // Activar vigilia de audio completo para garantizar reproducción íntegra en pantalla bloqueada
+            AudioPlayerManager.shared.setBackgroundAlarmEngine(enabled: true)
 
-            let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 5, repeats: false)
-            let request = UNNotificationRequest(
-                identifier: "test_notification_\(UUID().uuidString)",
-                content: content,
-                trigger: trigger
-            )
+            let parts = phrase.audioParts.isEmpty ? [phrase.audioFile] : phrase.audioParts
+            let totalParts = parts.count
 
-            UNUserNotificationCenter.current().add(request) { error in
-                DispatchQueue.main.async {
-                    if let error = error {
-                        self.statusMessage = "Error al programar prueba: \(error.localizedDescription)"
-                    } else {
-                        self.statusMessage = "¡Bloquea tu iPhone ahora! En 5 segundos sonará la voz de @mrsergiogaza."
-                        self.refreshPendingCount()
-                    }
-                }
+            for (idx, partFile) in parts.enumerated() {
+                let content = UNMutableNotificationContent()
+                let partSuffix = totalParts > 1 ? " (Parte \(idx + 1)/\(totalParts))" : ""
+                content.title = "🔥 \(phrase.author)\(partSuffix)"
+                content.subtitle = "\(phrase.category.uppercased()) • \(String(format: "%.0fs", phrase.durationSeconds)) COMPLETO"
+                content.body = "\"\(phrase.text)\""
+                content.sound = UNNotificationSound(named: UNNotificationSoundName(rawValue: partFile))
+                content.userInfo = [
+                    "phraseId": phrase.id,
+                    "fullAudioFile": phrase.audioFile,
+                    "partIndex": idx,
+                    "totalParts": totalParts
+                ]
+
+                let delaySeconds = 5.0 + (Double(idx) * 28.0)
+                let trigger = UNTimeIntervalNotificationTrigger(timeInterval: delaySeconds, repeats: false)
+                let request = UNNotificationRequest(
+                    identifier: "test_full_notif_\(phrase.id)_p\(idx)",
+                    content: content,
+                    trigger: trigger
+                )
+                UNUserNotificationCenter.current().add(request)
+            }
+
+            DispatchQueue.main.async {
+                self.statusMessage = "¡Bloquea tu iPhone! En 5s sonará el audio COMPLETO (\(String(format: "%.0fs", phrase.durationSeconds))) de \(phrase.author)."
+                self.refreshPendingCount()
             }
         }
 
@@ -91,7 +131,8 @@ final class NotificationManager: NSObject, ObservableObject, UNUserNotificationC
         }
     }
 
-    /// Reprograma todas las notificaciones (tanto por intervalos como por horarios fijos) con los audios de @mrsergiogaza.
+    /// Reprograma todas las notificaciones y alarmas encadenando todas las partes de cada Reel
+    /// y activando el motor de audio completo en segundo plano.
     func rescheduleAllNotifications(
         phrases: [MotivationalPhrase],
         intervalConfig: IntervalNotificationConfig,
@@ -108,53 +149,73 @@ final class NotificationManager: NSObject, ObservableObject, UNUserNotificationC
 
         guard !activePhrases.isEmpty else {
             DispatchQueue.main.async {
-                self.statusMessage = "Activa al menos una frase para programar notificaciones."
+                self.statusMessage = "Activa al menos un Reel para programar notificaciones."
             }
             return
         }
+
+        AudioPlayerManager.shared.setBackgroundAlarmEngine(enabled: intervalConfig.fullAudioAlarmMode)
 
         let performScheduling = {
             let center = UNUserNotificationCenter.current()
             center.removeAllPendingNotificationRequests()
 
-            var scheduledTotal = 0
+            var scheduledRequestsCount = 0
+            let maxIOSRequests = 62 // Límite del sistema iOS es 64
 
-            // 1. Programar Horarios Fijos Diarios (máx 16)
+            // 1. Programar Alarmas en Horarios Fijos Diarios (con encadenamiento de partes para el Reel completo)
             for alarm in fixedSchedules where alarm.isEnabled {
                 let chosenPhrase = activePhrases.first(where: { $0.id == alarm.specificPhraseId })
                     ?? activePhrases.randomElement()!
+                let parts = chosenPhrase.audioParts.isEmpty ? [chosenPhrase.audioFile] : chosenPhrase.audioParts
 
-                let content = UNMutableNotificationContent()
-                content.title = "⚡ \(alarm.label) • @mrsergiogaza"
-                content.subtitle = chosenPhrase.category.uppercased()
-                content.body = "\"\(chosenPhrase.text)\""
-                content.sound = UNNotificationSound(named: UNNotificationSoundName(rawValue: chosenPhrase.audioFile))
-                content.userInfo = ["phraseId": chosenPhrase.id, "audioFile": chosenPhrase.audioFile]
+                for (pIdx, partFile) in parts.enumerated() {
+                    guard scheduledRequestsCount < maxIOSRequests else { break }
 
-                var dateComponents = DateComponents()
-                dateComponents.hour = alarm.hour
-                dateComponents.minute = alarm.minute
+                    let content = UNMutableNotificationContent()
+                    let partBadge = parts.count > 1 ? " [\(pIdx + 1)/\(parts.count)]" : ""
+                    content.title = "⚡ \(alarm.label) • \(chosenPhrase.author)\(partBadge)"
+                    content.subtitle = "AUDIO COMPLETO (\(String(format: "%.0fs", chosenPhrase.durationSeconds)))"
+                    content.body = "\"\(chosenPhrase.text)\""
+                    content.sound = UNNotificationSound(named: UNNotificationSoundName(rawValue: partFile))
+                    content.userInfo = [
+                        "phraseId": chosenPhrase.id,
+                        "fullAudioFile": chosenPhrase.audioFile,
+                        "partIndex": pIdx,
+                        "totalParts": parts.count
+                    ]
 
-                let trigger = UNCalendarNotificationTrigger(dateMatching: dateComponents, repeats: true)
-                let request = UNNotificationRequest(
-                    identifier: "fixed_alarm_\(alarm.id.uuidString)",
-                    content: content,
-                    trigger: trigger
-                )
-                center.add(request)
-                scheduledTotal += 1
+                    let offsetSeconds = pIdx * 28
+                    let totalMinutesOffset = (alarm.minute * 60 + offsetSeconds) / 60
+                    let targetHour = (alarm.hour + (totalMinutesOffset / 60)) % 24
+                    let targetMinute = totalMinutesOffset % 60
+                    let targetSecond = offsetSeconds % 60
+
+                    var dateComponents = DateComponents()
+                    dateComponents.hour = targetHour
+                    dateComponents.minute = targetMinute
+                    dateComponents.second = targetSecond
+
+                    let trigger = UNCalendarNotificationTrigger(dateMatching: dateComponents, repeats: true)
+                    let request = UNNotificationRequest(
+                        identifier: "fixed_alarm_\(alarm.id.uuidString)_p\(pIdx)",
+                        content: content,
+                        trigger: trigger
+                    )
+                    center.add(request)
+                    scheduledRequestsCount += 1
+                }
             }
 
-            // 2. Programar Intervalos Motivadores (hasta completar 60 notificaciones futuras dentro del límite de 64 de iOS)
+            // 2. Programar Intervalos Motivadores (con todas las partes de cada Reel completo)
             if intervalConfig.isEnabled {
-                let maxIntervalNotifications = max(1, 60 - scheduledTotal)
                 let stepSeconds = TimeInterval(max(15, intervalConfig.intervalMinutes) * 60)
                 let calendar = Calendar.current
                 var candidateDate = Date().addingTimeInterval(stepSeconds)
-                var addedIntervalCount = 0
+                var reelCounter = 0
                 var safetyCounter = 0
 
-                while addedIntervalCount < maxIntervalNotifications && safetyCounter < 500 {
+                while scheduledRequestsCount < maxIOSRequests && safetyCounter < 400 {
                     safetyCounter += 1
                     let hour = calendar.component(.hour, from: candidateDate)
 
@@ -167,24 +228,37 @@ final class NotificationManager: NSObject, ObservableObject, UNUserNotificationC
                     }()
 
                     if isWithinActiveWindow {
-                        let phrase = activePhrases[addedIntervalCount % activePhrases.count]
-                        let content = UNMutableNotificationContent()
-                        content.title = "🔥 @mrsergiogaza"
-                        content.subtitle = phrase.category.uppercased()
-                        content.body = "\"\(phrase.text)\""
-                        content.sound = UNNotificationSound(named: UNNotificationSoundName(rawValue: phrase.audioFile))
-                        content.userInfo = ["phraseId": phrase.id, "audioFile": phrase.audioFile]
+                        let phrase = activePhrases[reelCounter % activePhrases.count]
+                        let parts = phrase.audioParts.isEmpty ? [phrase.audioFile] : phrase.audioParts
 
-                        let comps = calendar.dateComponents([.year, .month, .day, .hour, .minute, .second], from: candidateDate)
-                        let trigger = UNCalendarNotificationTrigger(dateMatching: comps, repeats: false)
-                        let req = UNNotificationRequest(
-                            identifier: "interval_notif_\(addedIntervalCount)",
-                            content: content,
-                            trigger: trigger
-                        )
-                        center.add(req)
-                        addedIntervalCount += 1
-                        scheduledTotal += 1
+                        for (pIdx, partFile) in parts.enumerated() {
+                            guard scheduledRequestsCount < maxIOSRequests else { break }
+
+                            let partDate = candidateDate.addingTimeInterval(Double(pIdx) * 28.0)
+                            let content = UNMutableNotificationContent()
+                            let partBadge = parts.count > 1 ? " [\(pIdx + 1)/\(parts.count)]" : ""
+                            content.title = "🔥 \(phrase.author)\(partBadge)"
+                            content.subtitle = "\(phrase.category.uppercased()) • \(String(format: "%.0fs", phrase.durationSeconds))"
+                            content.body = "\"\(phrase.text)\""
+                            content.sound = UNNotificationSound(named: UNNotificationSoundName(rawValue: partFile))
+                            content.userInfo = [
+                                "phraseId": phrase.id,
+                                "fullAudioFile": phrase.audioFile,
+                                "partIndex": pIdx,
+                                "totalParts": parts.count
+                            ]
+
+                            let comps = calendar.dateComponents([.year, .month, .day, .hour, .minute, .second], from: partDate)
+                            let trigger = UNCalendarNotificationTrigger(dateMatching: comps, repeats: false)
+                            let req = UNNotificationRequest(
+                                identifier: "interval_notif_\(reelCounter)_p\(pIdx)",
+                                content: content,
+                                trigger: trigger
+                            )
+                            center.add(req)
+                            scheduledRequestsCount += 1
+                        }
+                        reelCounter += 1
                     }
 
                     candidateDate = candidateDate.addingTimeInterval(stepSeconds)
@@ -192,7 +266,8 @@ final class NotificationManager: NSObject, ObservableObject, UNUserNotificationC
             }
 
             DispatchQueue.main.async {
-                self.statusMessage = "✅ \(scheduledTotal) notificaciones con voz de @mrsergiogaza programadas."
+                let creatorName = activePhrases.first?.author ?? "@mrsergiogarza"
+                self.statusMessage = "✅ Notificaciones con AUDIO COMPLETO activadas para \(creatorName)."
                 self.refreshPendingCount()
             }
         }
@@ -208,11 +283,5 @@ final class NotificationManager: NSObject, ObservableObject, UNUserNotificationC
                 }
             }
         }
-    }
-
-    func cancelAllNotifications() {
-        UNUserNotificationCenter.current().removeAllPendingNotificationRequests()
-        refreshPendingCount()
-        statusMessage = "Todas las notificaciones programadas fueron canceladas."
     }
 }

@@ -1,10 +1,12 @@
 import SwiftUI
 import UniformTypeIdentifiers
+import WebKit
 
 struct ContentView: View {
     @EnvironmentObject var store: PhraseStore
     @StateObject private var player = AudioPlayerManager.shared
     @StateObject private var notifications = NotificationManager.shared
+    @StateObject private var creatorImporter = InstagramCreatorImporter.shared
 
     @State private var selectedTab: Int = 0
     @State private var selectedCategory: String = "Todas"
@@ -13,10 +15,14 @@ struct ContentView: View {
     // Estado para añadir nueva alarma fija
     @State private var showingAddAlarmSheet = false
     @State private var newAlarmDate = Date()
-    @State private var newAlarmLabel = "Dosis de Disciplina"
+    @State private var newAlarmLabel = "Alarma Motivadora (Audio Completo)"
     @State private var newAlarmPhraseId: String = "random"
 
-    // Estado para importar un Reel/Audio desde el iPhone
+    // Estado para importar un Creador completo poniendo solo su @usuario
+    @State private var targetInstagramUsername = ""
+    @State private var maxReelsToExtract: Int = 10
+
+    // Estado para importar un Reel/Audio individual desde el iPhone
     @State private var showingFileImporter = false
     @State private var importedQuoteText = ""
     @State private var importedCategory = "Disciplina"
@@ -49,19 +55,19 @@ struct ContentView: View {
         TabView(selection: $selectedTab) {
             soundboardTab
                 .tabItem {
-                    Label("Audios", systemImage: "waveform.circle.fill")
+                    Label("Reels Completos", systemImage: "waveform.circle.fill")
                 }
                 .tag(0)
 
             notificationsTab
                 .tabItem {
-                    Label("Notificaciones", systemImage: "bell.badge.waveform.fill")
+                    Label("Alarmas y Avisos", systemImage: "bell.badge.waveform.fill")
                 }
                 .tag(1)
 
             importTab
                 .tabItem {
-                    Label("Importar Reel", systemImage: "plus.rectangle.on.folder.fill")
+                    Label("Importar Reel", systemImage: "person.crop.rectangle.badge.plus.fill")
                 }
                 .tag(2)
         }
@@ -69,7 +75,7 @@ struct ContentView: View {
         .tint(.orange)
     }
 
-    // MARK: - TAB 1: SOUNDBOARD Y FRASES DE @MRSERGIOGAZA
+    // MARK: - TAB 1: SOUNDBOARD DE REELS COMPLETOS DEL CREADOR ACTIVO
     private var soundboardTab: some View {
         NavigationStack {
             VStack(spacing: 0) {
@@ -77,7 +83,6 @@ struct ContentView: View {
                     .padding(.horizontal)
                     .padding(.top, 8)
 
-                // Filtro de categorías
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 10) {
                         ForEach(categories, id: \.self) { category in
@@ -122,9 +127,9 @@ struct ContentView: View {
                 }
             }
             .background(Color(red: 0.05, green: 0.05, blue: 0.07).ignoresSafeArea())
-            .navigationTitle("🔥 @mrsergiogaza")
+            .navigationTitle("🔥 \(store.activeCreatorHandle)")
             .navigationBarTitleDisplayMode(.inline)
-            .searchable(text: $searchText, prompt: "Buscar frase motivadora...")
+            .searchable(text: $searchText, prompt: "Buscar frase de \(store.activeCreatorHandle)...")
         }
     }
 
@@ -132,26 +137,37 @@ struct ContentView: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("MENTALIDAD INQUEBRANTABLE")
+                    Text("MODO AUDIO COMPLETO • \(store.activeCreatorHandle.uppercased())")
                         .font(.caption.weight(.heavy))
                         .foregroundColor(.orange)
-                    Text("\(store.phrases.count) audios listos • \(notifications.pendingCount) avisos activos")
+                    Text("\(store.phrases.count) Reels enteros • \(notifications.pendingCount) avisos activos")
                         .font(.caption)
                         .foregroundColor(.gray)
                 }
                 Spacer()
-                Image(systemName: "flame.fill")
-                    .font(.title2)
+                Button {
+                    selectedTab = 2
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrow.triangle.2.circlepath")
+                        Text("Cambiar @")
+                    }
+                    .font(.caption2.weight(.bold))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(Color.orange.opacity(0.2))
                     .foregroundColor(.orange)
+                    .clipShape(Capsule())
+                }
             }
 
             HStack(spacing: 10) {
                 Button {
                     if let randomPhrase = store.phrases.randomElement() {
-                        player.play(fileName: randomPhrase.audioFile)
+                        player.play(fileName: randomPhrase.audioFile, forceStartFromBeginning: true)
                     }
                 } label: {
-                    Label("Audio Aleatorio", systemImage: "shuffle")
+                    Label("Reel Completo Aleatorio", systemImage: "shuffle")
                         .font(.footnote.weight(.bold))
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 10)
@@ -165,7 +181,7 @@ struct ContentView: View {
                         notifications.sendTestNotification(with: randomPhrase)
                     }
                 } label: {
-                    Label("Probar Aviso (5s)", systemImage: "bell.and.waves.left.and.right.fill")
+                    Label("Probar Alarma (5s)", systemImage: "bell.and.waves.left.and.right.fill")
                         .font(.footnote.weight(.bold))
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 10)
@@ -199,9 +215,9 @@ struct ContentView: View {
                     .foregroundColor(.orange)
                     .cornerRadius(6)
 
-                Text(String(format: "%.1fs", phrase.durationSeconds))
-                    .font(.caption2.monospacedDigit())
-                    .foregroundColor(.gray)
+                Text("AUDIO COMPLETO • \(String(format: "%.1fs", phrase.durationSeconds))")
+                    .font(.caption2.monospacedDigit().weight(.semibold))
+                    .foregroundColor(.green)
 
                 Spacer()
 
@@ -234,7 +250,7 @@ struct ContentView: View {
                 } label: {
                     HStack(spacing: 6) {
                         Image(systemName: isPlayingThis ? "stop.fill" : "play.fill")
-                        Text(isPlayingThis ? "Detener Audio" : "Escuchar Voz")
+                        Text(isPlayingThis ? "Detener (\(String(format: "%.0fs", phrase.durationSeconds)))" : "Escuchar Completo (\(String(format: "%.0fs", phrase.durationSeconds)))")
                             .font(.caption.weight(.bold))
                     }
                     .padding(.horizontal, 14)
@@ -249,7 +265,7 @@ struct ContentView: View {
                 } label: {
                     HStack(spacing: 4) {
                         Image(systemName: "lock.iphone")
-                        Text("Probar en Bloqueo (5s)")
+                        Text("Sonar en Bloqueo (5s)")
                             .font(.caption.weight(.semibold))
                     }
                     .padding(.horizontal, 12)
@@ -273,7 +289,7 @@ struct ContentView: View {
         )
     }
 
-    // MARK: - TAB 2: PROGRAMACIÓN DE NOTIFICACIONES CON VOZ
+    // MARK: - TAB 2: PROGRAMACIÓN DE ALARMAS Y NOTIFICACIONES DE AUDIO COMPLETO
     private var notificationsTab: some View {
         NavigationStack {
             Form {
@@ -282,26 +298,35 @@ struct ContentView: View {
                         Image(systemName: notifications.isAuthorized ? "checkmark.shield.fill" : "exclamationmark.triangle.fill")
                             .foregroundColor(notifications.isAuthorized ? .green : .orange)
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(notifications.isAuthorized ? "Notificaciones con Voz Autorizadas" : "Permiso de Notificaciones Pendiente")
-                                .font(.subheadline.weight(.semibold))
-                            Text("\(notifications.pendingCount) notificaciones en cola en iOS")
+                            Text("Creador Activo: \(store.activeCreatorHandle)")
+                                .font(.subheadline.weight(.bold))
+                                .foregroundColor(.orange)
+                            Text("Motor de Audio Completo: \(player.isBackgroundAlarmEngineActive ? "Activo (Sin límite de 30s)" : "Encadenado por partes")")
                                 .font(.caption)
                                 .foregroundColor(.secondary)
                         }
                         Spacer()
                         if !notifications.isAuthorized {
-                            Button("Activar") {
+                            Button("Autorizar") {
                                 notifications.requestAuthorization()
                             }
                             .buttonStyle(.borderedProminent)
                         }
                     }
+
+                    Toggle("Sonar Audio Completo sin Cortes (Modo Alarma)", isOn: $store.intervalConfig.fullAudioAlarmMode)
+                        .onChange(of: store.intervalConfig.fullAudioAlarmMode) { newVal in
+                            player.setBackgroundAlarmEngine(enabled: newVal)
+                            store.saveAll()
+                        }
                 } header: {
-                    Text("Estado del Sistema iOS")
+                    Text("Motor de Audio Completo en Notificación y Alarma")
+                } footer: {
+                    Text("Garantiza que cuando salte una notificación o alarma suene el Reel COMPLETO de principio a fin (incluso si dura 60s o 90s), combinando reproducción íntegra en segundo plano y partes encadenadas.")
                 }
 
                 Section {
-                    Toggle("Activar Ráfagas por Intervalo", isOn: $store.intervalConfig.isEnabled)
+                    Toggle("Activar Notificaciones por Intervalo", isOn: $store.intervalConfig.isEnabled)
 
                     Picker("Frecuencia", selection: $store.intervalConfig.intervalMinutes) {
                         ForEach(intervalOptions, id: \.0) { mins, label in
@@ -321,11 +346,9 @@ struct ContentView: View {
                         }
                     }
 
-                    Toggle("Usar solo mis frases Favoritas ⭐", isOn: $store.intervalConfig.onlyFavorites)
+                    Toggle("Usar solo mis Reels Favoritos ⭐", isOn: $store.intervalConfig.onlyFavorites)
                 } header: {
-                    Text("1. Notificaciones por Intervalo")
-                } footer: {
-                    Text("Cada vez que salte la notificación en tu iPhone (incluso bloqueado), sonará el audio del reel de @mrsergiogaza correspondiente a la frase.")
+                    Text("1. Notificaciones Periódicas (\(store.activeCreatorHandle))")
                 }
 
                 Section {
@@ -349,11 +372,11 @@ struct ContentView: View {
                     Button {
                         showingAddAlarmSheet = true
                     } label: {
-                        Label("Añadir Horario Fijo Diario", systemImage: "plus.circle.fill")
+                        Label("Añadir Alarma con Audio Completo", systemImage: "alarm.waves.left.and.right.fill")
                             .foregroundColor(.orange)
                     }
                 } header: {
-                    Text("2. Horarios Fijos Diarios")
+                    Text("2. Alarmas en Horarios Fijos Diarios")
                 }
 
                 Section {
@@ -363,7 +386,7 @@ struct ContentView: View {
                         HStack {
                             Spacer()
                             Image(systemName: "bell.badge.waveform.fill")
-                            Text("Guardar y Activar Notificaciones con Voz")
+                            Text("Guardar y Activar Audio Completo")
                                 .fontWeight(.bold)
                             Spacer()
                         }
@@ -379,7 +402,7 @@ struct ContentView: View {
                     }
                 }
             }
-            .navigationTitle("Programar Avisos")
+            .navigationTitle("Alarmas y Avisos")
             .sheet(isPresented: $showingAddAlarmSheet) {
                 addFixedAlarmSheet
             }
@@ -389,17 +412,17 @@ struct ContentView: View {
     private var addFixedAlarmSheet: some View {
         NavigationStack {
             Form {
-                DatePicker("Hora de la notificación", selection: $newAlarmDate, displayedComponents: .hourAndMinute)
-                TextField("Etiqueta (ej. Entrenar sin excusas)", text: $newAlarmLabel)
+                DatePicker("Hora de la alarma", selection: $newAlarmDate, displayedComponents: .hourAndMinute)
+                TextField("Etiqueta de la alarma", text: $newAlarmLabel)
 
-                Picker("Audio de @mrsergiogaza", selection: $newAlarmPhraseId) {
-                    Text("🎲 Frase y Audio Aleatorio").tag("random")
+                Picker("Reel de \(store.activeCreatorHandle)", selection: $newAlarmPhraseId) {
+                    Text("🎲 Reel Completo Aleatorio").tag("random")
                     ForEach(store.phrases) { p in
-                        Text(p.text).lineLimit(1).tag(p.id)
+                        Text("(\(String(format: "%.0fs", p.durationSeconds))) \(p.text)").lineLimit(1).tag(p.id)
                     }
                 }
             }
-            .navigationTitle("Nuevo Horario Fijo")
+            .navigationTitle("Nueva Alarma")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancelar") {
@@ -423,21 +446,127 @@ struct ContentView: View {
         }
     }
 
-    // MARK: - TAB 3: IMPORTADOR DIRECTO DE REELS EN EL IPHONE
+    // MARK: - TAB 3: IMPORTAR CUALQUIER @USUARIO DE INSTAGRAM O REEL INDIVIDUAL
     private var importTab: some View {
         NavigationStack {
             Form {
+                // SECCIÓN 1: PONER SOLO EL @USUARIO Y CONFIGURAR TODA LA APP AUTOMÁTICAMENTE
                 Section {
-                    Text("Además de todos los reels empaquetados en la app, puedes importar cualquier vídeo (.mp4 / .mov) o audio (.mp3 / .wav / .m4a) descargado de @mrsergiogaza directamente desde tu iPhone. La app extraerá los primeros 28 segundos y lo convertirá en tono de notificación.")
-                        .font(.footnote)
-                        .foregroundColor(.secondary)
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Image(systemName: "sparkles.tv.fill")
+                                .foregroundColor(.orange)
+                            Text("Clonador Automático por @Usuario")
+                                .font(.subheadline.weight(.bold))
+                                .foregroundColor(.orange)
+                        }
+                        Text("Escribe únicamente el nombre de usuario de Instagram (igual que hiciste con @mrsergiogarza). La app buscará todos sus Reels, descargará sus audios completos, los escuchará con IA para transcribir sus frases y configurará toda la app y las notificaciones con su voz.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    .padding(.vertical, 4)
+
+                    HStack {
+                        Text("@")
+                            .font(.headline.weight(.bold))
+                            .foregroundColor(.orange)
+                        TextField("Ej: mrsergiogarza, lladosfitness, eltemach...", text: $targetInstagramUsername)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled(true)
+                    }
+
+                    Stepper("Reels a escuchar: \(maxReelsToExtract)", value: $maxReelsToExtract, in: 3...20)
+
+                    Button {
+                        Task {
+                            await creatorImporter.importCreatorByUsername(
+                                rawUsername: targetInstagramUsername,
+                                maxReels: maxReelsToExtract,
+                                store: store
+                            )
+                        }
+                    } label: {
+                        HStack {
+                            Spacer()
+                            if creatorImporter.isImporting {
+                                ProgressView()
+                                    .tint(.black)
+                                    .padding(.trailing, 6)
+                                Text("Escuchando Reels...")
+                                    .fontWeight(.bold)
+                            } else {
+                                Image(systemName: "bolt.horizontal.circle.fill")
+                                Text("Escuchar Reels y Configurar Toda la App")
+                                    .fontWeight(.bold)
+                            }
+                            Spacer()
+                        }
+                        .padding(.vertical, 6)
+                    }
+                    .disabled(creatorImporter.isImporting || targetInstagramUsername.trimmingCharacters(in: .whitespaces).isEmpty)
+                    .listRowBackground(Color.orange)
+                    .foregroundColor(.black)
+
+                    if creatorImporter.isImporting || !creatorImporter.progressText.isEmpty {
+                        VStack(alignment: .leading, spacing: 6) {
+                            if creatorImporter.isImporting {
+                                ProgressView(value: creatorImporter.progressFraction)
+                                    .tint(.orange)
+                            }
+                            Text(creatorImporter.progressText)
+                                .font(.caption)
+                                .foregroundColor(.orange)
+                        }
+                        .padding(.vertical, 4)
+                    }
+
+                    Button {
+                        creatorImporter.showLoginWebView = true
+                    } label: {
+                        Label("Iniciar sesión en Instagram (si pide cuenta para ver más Reels)", systemImage: "key.fill")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
                 } header: {
-                    Text("Importador Directo en iPhone")
+                    Text("1. Configurar App con Cualquier @Usuario")
                 }
 
+                // SECCIÓN 2: PERFILES DE CREADORES YA IMPORTADOS (CAMBIO EN 1 TOQUE)
                 Section {
-                    TextField("Escribe la frase del Reel...", text: $importedQuoteText, axis: .vertical)
-                        .lineLimit(3...5)
+                    ForEach(store.creatorProfiles) { profile in
+                        Button {
+                            store.switchActiveCreator(to: profile)
+                        } label: {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(profile.handle)
+                                        .font(.subheadline.weight(.bold))
+                                        .foregroundColor(.white)
+                                    Text("\(profile.phrases.count) Reels completos listos")
+                                        .font(.caption)
+                                        .foregroundColor(.gray)
+                                }
+                                Spacer()
+                                if store.activeCreatorHandle.lowercased() == profile.handle.lowercased() {
+                                    Label("Activo", systemImage: "checkmark.circle.fill")
+                                        .font(.caption.weight(.bold))
+                                        .foregroundColor(.orange)
+                                } else {
+                                    Text("Usar este @")
+                                        .font(.caption.weight(.semibold))
+                                        .foregroundColor(.orange)
+                                }
+                            }
+                        }
+                    }
+                } header: {
+                    Text("2. Creadores Guardados en tu iPhone")
+                }
+
+                // SECCIÓN 3: IMPORTAR UN VÍDEO O AUDIO SUELTO DESDE EL IPHONE (AUDIO COMPLETO)
+                Section {
+                    TextField("Escribe la frase del Reel (opcional)...", text: $importedQuoteText, axis: .vertical)
+                        .lineLimit(2...4)
 
                     Picker("Categoría", selection: $importedCategory) {
                         ForEach(["Disciplina", "Mentalidad", "Enfoque", "Éxito"], id: \.self) { cat in
@@ -450,23 +579,24 @@ struct ContentView: View {
                     } label: {
                         HStack {
                             Image(systemName: "video.badge.plus")
-                            Text("Seleccionar Vídeo o Audio del Reel...")
+                            Text("Seleccionar Vídeo o Audio Completo...")
                                 .fontWeight(.semibold)
                         }
                     }
-                } header: {
-                    Text("Datos del Nuevo Reel")
-                }
 
-                if !importFeedbackMessage.isEmpty {
-                    Section {
+                    if !importFeedbackMessage.isEmpty {
                         Text(importFeedbackMessage)
-                            .font(.footnote)
+                            .font(.caption)
                             .foregroundColor(.orange)
                     }
+                } header: {
+                    Text("3. Añadir Archivo de Reel Individual (Audio Completo)")
                 }
             }
-            .navigationTitle("Importar Reel")
+            .navigationTitle("Importar Reel / @Usuario")
+            .sheet(isPresented: $creatorImporter.showLoginWebView) {
+                InstagramLoginSheetView(webView: creatorImporter.webView)
+            }
             .fileImporter(
                 isPresented: $showingFileImporter,
                 allowedContentTypes: [.audio, .movie, .mpeg4Movie, .quickTimeMovie, .mp3, .wav],
@@ -476,20 +606,21 @@ struct ContentView: View {
                 case .success(let urls):
                     guard let url = urls.first else { return }
                     let quote = importedQuoteText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                        ? "Nuevo audio motivador de @mrsergiogaza (\(url.DeletingPathExtension().lastPathComponent))"
+                        ? "Reel completo de \(store.activeCreatorHandle) (\(url.deletingPathExtension().lastPathComponent))"
                         : importedQuoteText
 
-                    AudioPlayerManager.shared.importReelOrAudioForNotification(sourceURL: url) { conversion in
+                    AudioPlayerManager.shared.importCompleteReelAudio(sourceURL: url) { conversion in
                         switch conversion {
                         case .success(let info):
                             store.addImportedPhrase(
                                 text: quote,
                                 category: importedCategory,
-                                audioFile: info.fileName,
+                                audioFile: info.fullFileName,
+                                audioParts: info.partFileNames,
                                 duration: info.duration
                             )
                             importedQuoteText = ""
-                            importFeedbackMessage = "✅ Reel importado (\(String(format: "%.1fs", info.duration))) y listo para sonar en tus notificaciones."
+                            importFeedbackMessage = "✅ Reel completo importado (\(String(format: "%.1fs", info.duration)) sin cortes) y activado en tus notificaciones."
                         case .failure(let err):
                             importFeedbackMessage = "❌ Error importando archivo: \(err.localizedDescription)"
                         }
@@ -502,8 +633,39 @@ struct ContentView: View {
     }
 }
 
-private extension URL {
-    func DeletingPathExtension() -> URL {
-        self.deletingPathExtension()
+struct InstagramLoginSheetView: View {
+    @Environment(\.dismiss) private var dismiss
+    let webView: WKWebView
+
+    var body: some View {
+        NavigationStack {
+            WebViewContainer(webView: webView)
+                .navigationTitle("Sesión de Instagram")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Listo") {
+                            dismiss()
+                        }
+                    }
+                }
+                .onAppear {
+                    if webView.url == nil {
+                        if let url = URL(string: "https://www.instagram.com/accounts/login/") {
+                            webView.load(URLRequest(url: url))
+                        }
+                    }
+                }
+        }
     }
+}
+
+struct WebViewContainer: UIViewRepresentable {
+    let webView: WKWebView
+
+    func makeUIView(context: Context) -> WKWebView {
+        return webView
+    }
+
+    func updateUIView(_ uiView: WKWebView, context: Context) {}
 }
