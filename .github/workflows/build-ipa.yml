@@ -1,0 +1,53 @@
+name: Build iOS .ipa (Sergio Gaza Motivacion)
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build-unsigned-ipa:
+    name: Compilar .ipa para Sideloadly / AltStore
+    runs-on: macos-14
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Instalar XcodeGen
+        run: |
+          if ! command -v xcodegen &> /dev/null; then
+            brew install xcodegen
+          fi
+
+      - name: Generar proyecto Xcode (.xcodeproj)
+        working-directory: ios
+        run: |
+          xcodegen generate
+
+      - name: Compilar aplicación iOS (Release sin firma)
+        working-directory: ios
+        run: |
+          xcodebuild clean build \
+            -project SergioGazaMotivacion.xcodeproj \
+            -scheme SergioGazaMotivacion \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Empaquetar archivo SergioGazaMotivacion.ipa
+        working-directory: ios
+        run: |
+          mkdir -p Payload
+          cp -r build/Build/Products/Release-iphoneos/SergioGazaMotivacion.app Payload/
+          zip -r9 SergioGazaMotivacion.ipa Payload
+
+      - name: Subir artefacto SergioGazaMotivacion.ipa
+        uses: actions/upload-artifact@v4
+        with:
+          name: SergioGazaMotivacion-IPA
+          path: ios/SergioGazaMotivacion.ipa
+          if-no-files-found: error

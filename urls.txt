@@ -1,0 +1,15 @@
+# Enlaces de Reels de @mrsergiogaza (uno por línea)
+# Puedes añadir más enlaces aquí y volver a ejecutar `python scripts/extract_reels.py`
+https://www.instagram.com/reel/DUTMsFsER39/
+https://www.instagram.com/reel/DUV0bo1kVNA/
+https://www.instagram.com/reel/DUetnJRjAgW/
+https://www.instagram.com/reel/De-nJyyMQSR/
+https://www.instagram.com/reel/De1nUi3RFi0/
+https://www.instagram.com/reel/De4ydu7xgDs/
+https://www.instagram.com/reel/De6AchzxUK3/
+https://www.instagram.com/reel/De_5NVvxkbB/
+https://www.instagram.com/reel/DerRO-2xNnV/
+https://www.instagram.com/reel/Det2fXpx6ve/
+https://www.instagram.com/reel/DewbggNRO33/
+https://www.instagram.com/reel/DezIIcwR1Ui/
+https://www.instagram.com/reel/DfCexDOxaFM/

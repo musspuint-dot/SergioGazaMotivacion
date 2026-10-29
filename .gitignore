@@ -1,0 +1,15 @@
+# Sesión local del navegador y vídeos brutos pesados
+.playwright_ig_session/
+raw_reels/*.mp4
+raw_reels/*.mov
+raw_reels/*.webm
+raw_reels/*.m4a
+raw_reels/*.info.json
+
+# Compilación de Xcode
+ios/build/
+ios/Payload/
+ios/*.ipa
+.DS_Store
+__pycache__/
+*.pyc
