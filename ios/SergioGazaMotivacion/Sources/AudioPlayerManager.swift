@@ -100,19 +100,19 @@ final class AudioPlayerManager: NSObject, ObservableObject, AVAudioPlayerDelegat
         var chunkSize = fileSize.littleEndian
         data.append(Data(bytes: &chunkSize, count: 4))
         data.append("WAVEfmt ".data(using: .ascii)!)
-        var subchunk1Size: UInt32 = 16.littleEndian
+        var subchunk1Size: UInt32 = UInt32(16).littleEndian
         data.append(Data(bytes: &subchunk1Size, count: 4))
-        var audioFormat: UInt16 = 1.littleEndian
+        var audioFormat: UInt16 = UInt16(1).littleEndian
         data.append(Data(bytes: &audioFormat, count: 2))
-        var numChannels: UInt16 = 1.littleEndian
+        var numChannels: UInt16 = UInt16(1).littleEndian
         data.append(Data(bytes: &numChannels, count: 2))
         var sr = sampleRate.littleEndian
         data.append(Data(bytes: &sr, count: 4))
         var byteRate = (sampleRate * 2).littleEndian
         data.append(Data(bytes: &byteRate, count: 4))
-        var blockAlign: UInt16 = 2.littleEndian
+        var blockAlign: UInt16 = UInt16(2).littleEndian
         data.append(Data(bytes: &blockAlign, count: 2))
-        var bitsPerSample: UInt16 = 16.littleEndian
+        var bitsPerSample: UInt16 = UInt16(16).littleEndian
         data.append(Data(bytes: &bitsPerSample, count: 2))
         data.append("data".data(using: .ascii)!)
         var subchunk2Size = dataSize.littleEndian

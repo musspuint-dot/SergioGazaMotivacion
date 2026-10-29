@@ -10,6 +10,7 @@ raw_reels/*.info.json
 ios/build/
 ios/Payload/
 ios/*.ipa
+*.ipa
 .DS_Store
 __pycache__/
 *.pyc
